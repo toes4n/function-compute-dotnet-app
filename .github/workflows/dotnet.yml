@@ -69,9 +69,12 @@ jobs:
         
     - name: Install Alibaba Cloud FC3 CLI
       run: |
-        curl -sSL https://gosspublic.alicdn.com/fc-cli/release/v3/install.sh -o install.sh
-        chmod +x install.sh
-        sudo ./install.sh
+        curl -L -o fc3.zip https://gosspublic.alicdn.com/fc-cli/release/v3/fc3_linux_amd64.zip
+
+        unzip fc3.zip
+        
+        chmod +x fc3
+        sudo mv fc3 /usr/local/bin/
         fc3 --version
         
     - name: Deploy Function
