@@ -74,14 +74,14 @@ jobs:
     - name: Deploy Function
       env:
         # Configure these secrets in GitHub Repo -> Settings -> Secrets and variables -> Actions
-        # ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
+        ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
         ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
         ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
         ALIYUN_REGION: ${{ secrets.ALIYUN_REGION }}
       if: "${{ env.ALIYUN_ACCESS_KEY_ID != '' }}"
       run: |
         # Configure FC3 profile non-interactively
-        fc3 config --endpoint "ap-southeast-1.fc.aliyuncs.com" --access-key-id "$ALIYUN_ACCESS_KEY_ID" --access-key-secret "$ALIYUN_ACCESS_KEY_SECRET" --region "$ALIYUN_REGION"
+        fc3 config --endpoint "cn-hangzhou.fc.aliyuncs.com" --access-key-id "$ALIYUN_ACCESS_KEY_ID" --access-key-secret "$ALIYUN_ACCESS_KEY_SECRET" --region "$ALIYUN_REGION"
         
         # Update the function code
-        fc3 function update --function-name test-cicd-function --zip-file fileb://./function.zip
+        fc3 function update --service-name devops-learning --function-name learning-app --zip-file fileb://./function.zip
