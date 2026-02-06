@@ -67,12 +67,11 @@ jobs:
       with:
         name: function-package
         
-    - name: Install Alibaba Cloud FC3 CLI
+    - name: Install Alibaba Cloud FC3 CLI 
       run: |
-        curl -L -o fc3.zip https://gosspublic.alicdn.com/fc-cli/release/v3/fc3_linux_amd64.zip
-
-        unzip fc3.zip
+        curl -L -o fc3.zip https://github.com/aliyun/fc-cli/releases/download/v3.0.12/fc3_linux_amd64.zip
         
+        unzip fc3.zip
         chmod +x fc3
         sudo mv fc3 /usr/local/bin/
         fc3 --version
