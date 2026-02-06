@@ -67,10 +67,21 @@ jobs:
       with:
         name: function-package
         
-    - name: Install Alibaba Cloud FC3 CLI 
+    - name: Install Alibaba Cloud FC3 CLI
       run: |
-        curl -L -o fc3.zip https://github.com/aliyun/fc-cli/releases/download/v3.0.12/fc3_linux_amd64.zip
+
+        LATEST_URL=$(curl -s https://api.github.com/repos/aliyun/fc-cli/releases/latest | grep "browser_download_url.*linux_amd64.zip" | cut -d '"' -f 4)
+        echo "Downloading from: $LATEST_URL"
         
+ 
+        curl -L -o fc3.zip "$LATEST_URL"
+        
+
+        if [ ! -s fc3.zip ]; then
+          echo "Download failed or file is empty"
+          exit 1
+        fi
+
         unzip fc3.zip
         chmod +x fc3
         sudo mv fc3 /usr/local/bin/
