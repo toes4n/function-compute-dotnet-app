@@ -1,0 +1,16 @@
+#!/bin/bash
+# Bootstrap script for Function Compute
+# This starts the .NET application and listens on the required port
+
+set -e
+
+# Get port from environment, default to 9000
+PORT=${FC_SERVER_PORT:-9000}
+
+echo "Starting DevOps Learning Application..."
+echo "Listening on port: $PORT"
+echo "Environment: ${ENVIRONMENT:-development}"
+echo ""
+
+# Execute the application
+exec ./devops-app

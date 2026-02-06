@@ -1,0 +1,179 @@
+name: Git Action for Versioning and Deploying to Alibaba Cloud Function Compute
+
+on:
+  push:
+    branches: 
+      - '*'
+  pull_request:
+    branches: 
+      - main
+
+env:
+  VERSION_FILE: version.txt
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install Dependencies and Build
+      run: |
+        npm install
+        npm run build
+      working-directory: ./
+
+    - name: Create .env file from secret
+      run: |
+        cat << 'EOF' > .env
+        ${{ secrets.ENV_FILE_CONTENT }}
+        EOF
+      working-directory: ./
+
+    - name: Prepare Deploy Folder
+      run: |
+        rm -rf deploy
+        mkdir deploy
+        cp -r dist deploy/
+        cp -r node_modules deploy/  # Include node_modules
+        cp .env deploy/ || true
+        cp package.json deploy/
+      working-directory: ./
+
+    - name: Debug File Structure
+      run: |
+        ls -la
+        ls -la deploy/
+      working-directory: ./
+
+    - name: Get current version
+      id: version
+      shell: bash
+      run: |
+        if [ -f "${{ env.VERSION_FILE }}" ]; then
+          current_version=$(cat "${{ env.VERSION_FILE }}")
+          echo "Current version: $current_version"
+        else
+          current_version="1.0.0"
+          echo "No version file found. Starting with version: $current_version"
+        fi
+        echo "current_version=$current_version" >> $GITHUB_OUTPUT
+        IFS='.' read -r major minor patch <<< "$current_version"
+        new_patch=$((patch + 1))
+        new_version="$major.$minor.$new_patch"
+        echo "New version: $new_version"
+        echo "$new_version" > "${{ env.VERSION_FILE }}"
+        echo "new_version=$new_version" >> $GITHUB_OUTPUT
+
+    - name: Pull Remote Changes
+      if: github.event_name == 'push'
+      run: |
+        git pull origin main --rebase
+      continue-on-error: true
+
+    - name: Commit version update
+      if: github.event_name == 'push'
+      uses: stefanzweifel/git-auto-commit-action@v4
+      with:
+        commit_message: "Bump version to ${{ steps.version.outputs.new_version }}"
+        file_pattern: "${{ env.VERSION_FILE }}"
+        push_options: "--force-with-lease"
+
+    - name: Install Serverless Devs for Alibaba Cloud
+      run: |
+        npm install -g @serverless-devs/s
+        s config get
+      working-directory: ./
+
+    - name: Configure Serverless Devs Access
+      run: |
+        s config add --AccessKeyID ${{ secrets.ALICLOUD_ACCESS_KEY_ID }} --AccessKeySecret ${{ secrets.ALICLOUD_ACCESS_KEY_SECRET }} --access default -f
+      working-directory: ./
+
+    - name: Zip Deploy Folder
+      uses: vimtor/action-zip@v1.2
+      with:
+        files: deploy/
+        dest: deploy-${{ steps.version.outputs.new_version }}.zip
+        recursive: true
+
+    - name: Update s.yml with Current Version (Local Path)
+      run: |
+        sed -i "s|code: ./deploy-[0-9.]*.zip|code: ./deploy-${{ steps.version.outputs.new_version }}.zip|g" s.yml
+      working-directory: ./
+
+    - name: Debug s.yml Content
+      run: cat s.yml
+      working-directory: ./
+
+    - name: Install Alibaba Cloud OSSUTIL
+      run: |
+        wget http://gosspublic.alicdn.com/ossutil/1.7.16/ossutil64
+        chmod +x ossutil64
+      working-directory: ./
+
+    - name: Configure Alibaba Cloud OSSUTIL
+      run: |
+        ./ossutil64 config -i ${{ secrets.ALICLOUD_ACCESS_KEY_ID }} -k ${{ secrets.ALICLOUD_ACCESS_KEY_SECRET }} -e oss-ap-southeast-1.aliyuncs.com -c .ossutilconfig
+      working-directory: ./
+
+    - name: Upload Zip File to OSS Bucket
+      run: |
+        ./ossutil64 --config-file .ossutilconfig cp deploy-${{ steps.version.outputs.new_version }}.zip oss://itrack-uat-gitaction/deploy-zips/deploy-${{ steps.version.outputs.new_version }}.zip -f --loglevel debug
+      working-directory: ./
+
+    - name: Check Upload Status
+      run: |
+        ./ossutil64 --config-file .ossutilconfig ls oss://itrack-uat-gitaction/deploy-zips/
+      working-directory: ./
+
+    - name: Delete Old Zip Files from OSS Bucket
+      run: |
+        # List all .zip files in the OSS bucket folder, extract only object names
+        zip_files=$(./ossutil64 --config-file .ossutilconfig ls oss://itrack-uat-gitaction/deploy-zips/ | awk '{print $NF}' | grep ".zip$")
+        echo "All zip files in OSS bucket:"
+        echo "$zip_files"
+
+        # Keep only the latest zip file (the one just uploaded)
+        latest_zip="deploy-${{ steps.version.outputs.new_version }}.zip"
+        echo "Keeping latest zip: $latest_zip"
+
+        # Loop through and delete all other zip files
+        for zip in $zip_files; do
+          filename=$(basename "$zip")
+          if [ "$filename" != "$latest_zip" ]; then
+            echo "Deleting old zip: oss://itrack-uat-gitaction/deploy-zips/$filename"
+            ./ossutil64 --config-file .ossutilconfig rm "oss://itrack-uat-gitaction/deploy-zips/$filename" -f
+          fi
+        done
+      working-directory: ./
+
+    - name: Verify OSS Bucket Contents After Cleanup
+      run: |
+        ./ossutil64 --config-file .ossutilconfig ls oss://itrack-uat-gitaction/deploy-zips/
+      working-directory: ./
+
+    - name: Deploy to Alibaba Cloud Function Compute
+      run: |
+        s deploy --use-local true --assume-yes --region ${{ secrets.ALIYUN_REGION }}
+      working-directory: ./
+      env:
+        VERSION: ${{ steps.version.outputs.new_version }}
+
+    - name: Log Deployment Information
+      run: |
+        s info --region ${{ secrets.ALIYUN_REGION }}
+      working-directory: ./
