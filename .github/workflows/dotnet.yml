@@ -30,19 +30,17 @@ jobs:
       run: dotnet publish --no-build -c Release -r linux-x64 -o ./publish
 
     - name: Prepare Bootstrap
-      # Ensures bootstrap script is present and executable in the package
+      # change .NET binary name 'devops-app' 
       run: |
         if [ -f bootstrap ]; then
           cp bootstrap publish/
         else
-          # Create a default bootstrap if missing
           echo '#!/bin/bash' > publish/bootstrap
           echo './devops-app' >> publish/bootstrap
         fi
         chmod +x publish/bootstrap
 
     - name: Create Function Zip
-      # Zips the contents of publish/ directory to the root of the zip
       run: |
         cd publish
         zip -r ../function.zip .
@@ -67,25 +65,36 @@ jobs:
       with:
         name: function-package
         
-    - name: Install Alibaba Cloud FC3 CLI
-      run: |
+    # 1. Serverless Devs Tool install via npm  
+    - name: Install Serverless Devs
+      run: npm install -g @serverless-devs/s
 
-        npm install -g @alicloud/fc3
-        
-
-        fc3 --version
-        
-    - name: Deploy Function
-      env:
-        # Configure these secrets in GitHub Repo -> Settings -> Secrets and variables -> Actions
-        # ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
-        ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
-        ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
-        ALIYUN_REGION: ${{ secrets.ALIYUN_REGION }}
-      if: "${{ env.ALIYUN_ACCESS_KEY_ID != '' }}"
+    # 2. Alibaba Cloud Access Key Login
+    - name: Configure Serverless Devs
       run: |
-        # Configure FC3 profile non-interactively
-        fc3 config --endpoint "ap-southeast-1.fc.aliyuncs.com" --access-key-id "$ALIYUN_ACCESS_KEY_ID" --access-key-secret "$ALIYUN_ACCESS_KEY_SECRET" --region "$ALIYUN_REGION"
-        
-        # Update the function code
-        fc3 function update --function-name test-cicd-function --zip-file fileb://./function.zip
+        s config add --AccessKeyID "${{ secrets.ALIYUN_ACCESS_KEY_ID }}" --AccessKeySecret "${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}" -a default -f
+
+    # 3. Create s.yaml for to deploy
+    
+    - name: Create s.yaml Configuration
+      run: |
+        cat <<EOF > s.yaml
+        edition: 3.0.0
+        name: cicd-deploy
+        access: default
+        resources:
+          function_resource:
+            component: fc3
+            props:
+              region: ${{ secrets.ALIYUN_REGION }}
+              functionName: test-cicd-function
+              runtime: custom.debian10
+              code: ./function.zip
+              handler: index.handler
+              timeout: 60
+              memorySize: 512
+        EOF
+
+    # 4. Deploy to Alibaba Cloud Function Compute
+    - name: Deploy to Alibaba Cloud
+      run: s deploy -y
