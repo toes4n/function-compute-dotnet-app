@@ -69,12 +69,8 @@ jobs:
         
     - name: Install Alibaba Cloud FC3 CLI
       run: |
-        
-        wget -O fc3.zip https://gosspublic.alicdn.com/fc-cli/release/v3/fc3_linux_amd64.zip
-        
-        unzip -o fc3.zip
-        chmod +x fc3
-        sudo mv fc3 /usr/local/bin/
+
+        npm install -g @alicloud/fc3
         
 
         fc3 --version
