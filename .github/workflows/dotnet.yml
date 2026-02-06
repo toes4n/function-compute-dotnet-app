@@ -51,7 +51,7 @@ jobs:
         name: function-package
         path: function.zip
         retention-days: 5
-
+ 
   deploy:
     name: Deploy to FC
     needs: build
